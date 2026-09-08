@@ -1,0 +1,50 @@
+{
+    "manifest_version": 3,
+
+    "name": "Chess Practice Overlay",
+    "version": "0.1.0",
+
+    "description": "Local educational chess practice overlay for Chess.com computer games.",
+
+    "permissions": [
+        "offscreen",
+        "storage"
+    ],
+
+    "host_permissions": [
+        "https://www.chess.com/*"
+    ],
+
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+
+    "action": {
+        "default_title": "Chess Practice Overlay",
+        "default_popup": "popup.html"
+    },
+
+    "content_scripts": [{
+        "matches": [
+            "https://www.chess.com/*"
+        ],
+        "js": [
+            "content.js"
+        ],
+        "run_at": "document_idle"
+    }],
+
+    "web_accessible_resources": [{
+        "resources": [
+            "engine/*"
+        ],
+        "matches": [
+            "https://www.chess.com/*"
+        ]
+    }],
+
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    }
+}

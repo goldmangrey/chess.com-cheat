@@ -1,0 +1,32 @@
+{
+  "name": "chess-practice-overlay",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:main": "vite build",
+    "build:content": "vite build --config vite.content.config.ts",
+    "build": "npm run typecheck && npm run build:main && npm run build:content",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "stockfish": "^18.0.8"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.9",
+    "@types/node": "^26.5.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "type": "module"
+}

@@ -1,0 +1,2 @@
+var e=[8,10,12,14,16],t={arrowsEnabled:!0,engineDepth:12};function n(n){let r=n?.engineDepth,i=e.includes(r)?r:12;return{arrowsEnabled:n?.arrowsEnabled??t.arrowsEnabled,engineDepth:i}}export{e as n,n as r,t};
+//# sourceMappingURL=constants-CHIWtw6c.js.map
