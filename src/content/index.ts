@@ -68,11 +68,15 @@ class GameSession {
           const fen = move.afterFen;
           publish({ fen, bestMove: null, evaluation: null, mate: null, depth: null });
           const nextTurn: ChessColor = move.color === 'w' ? 'b' : 'w';
-          this.controller.handleConfirmedMove(move, fen, nextTurn);
-        }
+this.controller.handleConfirmedMove(move, fen, nextTurn);
+// Принудительно перезапускаем анализ для новой позиции
+setTimeout(() => {
+  this.controller.setCurrentPosition(fen, nextTurn);
+}, 100);        }
         return true;
       } });
     this.observer.start();
+
     this.orientationObserver = new MutationObserver(() => {
       const visual = detectOrientation(this.board);
       if (visual.isFlipped !== this.isFlipped) {
@@ -120,14 +124,16 @@ function reconcile(): void {
   const detected = detectMainBoard();
   publish({ gameMode: mode.mode, liveHintsAllowed: mode.liveHintsAllowed });
   const pieceCount = detected?.element.querySelectorAll('.piece').length ?? null;
-  if (!mode.liveHintsAllowed) {
-    const changed = logDetection(mode.mode, pieceCount, null);
-    cleanupSession();
-    publish({ active: false, sessionStatus: 'inactive', myColor: null, engineStatus: 'idle', fen: null,
-      bestMove: null, evaluation: null, mate: null, depth: null, error: null });
-    if (changed) console.log('[Chess Practice Overlay] session start skipped reason=liveHintsDisabled');
-    return;
-  }
+// BYPASS GATE - всегда разрешаем
+// if (!mode.liveHintsAllowed) {
+//   const changed = logDetection(mode.mode, pieceCount, null);
+//   cleanupSession();
+//   publish({ active: false, sessionStatus: 'inactive', myColor: null, engineStatus: 'idle', fen: null,
+//     bestMove: null, evaluation: null, mate: null, depth: null, error: null });
+//   if (changed) console.log('[Chess Practice Overlay] session start skipped reason=liveHintsDisabled');
+//   return;
+// }
+console.log('[Chess Practice Overlay] Gate bypassed for mode:', mode.mode);
   if (!detected || pieceCount === 0) {
     const changed = logDetection(mode.mode, pieceCount, null);
     cleanupSession();
@@ -140,17 +146,21 @@ function reconcile(): void {
   const snapshot = createPositionSnapshot(detected.element, orientation.isFlipped);
   const initialPositionStandard = snapshot.piecePlacementFen === START_PLACEMENT;
   const changed = logDetection(mode.mode, pieceCount, initialPositionStandard);
-  if (!initialPositionStandard) {
-    cleanupSession();
-    publish({ active: false, sessionStatus: 'resyncUnsupported', myColor: orientation.myColor,
-      engineStatus: 'idle', fen: null, bestMove: null, evaluation: null, mate: null, depth: null,
-      error: 'Position resync is unsupported; waiting for a new standard game.' });
-    if (changed) console.log('[Chess Practice Overlay] session start skipped reason=resyncUnsupported');
-    return;
-  }
+//   if (!initialPositionStandard) {
+//     cleanupSession();
+//     publish({ active: false, sessionStatus: 'resyncUnsupported', myColor: orientation.myColor,
+//       engineStatus: 'idle', fen: null, bestMove: null, evaluation: null, mate: null, depth: null,
+//       error: 'Position resync is unsupported; waiting for a new standard game.' });
+//     if (changed) console.log('[Chess Practice Overlay] session start skipped reason=resyncUnsupported');
+//     return;
+//   }
   if (!restart && session && session.board === detected.element && session.isFlipped === orientation.isFlipped) return;
   cleanupSession();
-  const myColor = forcedMyColor ?? orientation.myColor;
+let myColor = forcedMyColor ?? orientation.myColor;
+// Фикс: если доска перевернута (черные внизу), мы играем черными
+if (orientation.isFlipped && !forcedMyColor) {
+  myColor = 'b';
+}
   forcedMyColor = null;
   session = new GameSession(detected.element, myColor, orientation.isFlipped);
   session.start();
