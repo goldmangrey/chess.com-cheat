@@ -5,6 +5,7 @@ import { detectMainBoard } from '../platform/chesscom/board-detector';
 import { createPositionSnapshot } from '../platform/chesscom/fen-builder';
 import { detectGameMode } from '../platform/chesscom/game-mode';
 import { detectOrientation } from '../platform/chesscom/orientation';
+import { detectPlayerColor } from '../platform/chesscom/player-color';
 import { PositionObserver } from '../platform/chesscom/position-observer';
 import { ChessState } from '../shared/chess-state';
 import { DEFAULT_SETTINGS, POSITION_DEBOUNCE_MS, SESSION_RECHECK_MS, normalizeSettings, type ExtensionSettings } from '../shared/constants';
@@ -31,15 +32,21 @@ class GameSession {
   private readonly overlay: BoardOverlay;
   private readonly engine: StockfishClient;
   private readonly controller: AnalysisController;
-  private readonly chess = new ChessState();
+  private readonly chess: ChessState;
   private observer: PositionObserver | null = null;
   private orientationObserver: MutationObserver | null = null;
   private destroyed = false;
 
-  constructor(readonly board: HTMLElement, readonly myColor: ChessColor, readonly isFlipped: boolean) {
+  constructor(
+    readonly board: HTMLElement,
+    readonly myColor: ChessColor | null,
+    readonly isFlipped: boolean,
+    initialFen?: string
+  ) {
+    this.chess = new ChessState(initialFen);
     this.overlay = new BoardOverlay(board, isFlipped);
     this.engine = new StockfishClient();
-    this.controller = new AnalysisController({ engine: this.engine, overlay: this.overlay, myColor,
+    this.controller = new AnalysisController({ engine: this.engine, overlay: this.overlay,
       depth: settings.engineDepth, arrowsEnabled: settings.arrowsEnabled, onState: publish });
   }
 
@@ -48,7 +55,9 @@ class GameSession {
     publish({ active: true, sessionStatus: 'active', myColor: this.myColor,
       engineStatus: 'loading', fen: this.chess.getFen(), error: null });
     void this.engine.init().then(() => {
-      if (!this.destroyed && runtimeState.engineStatus === 'loading') publish({ engineStatus: 'ready' });
+      if (this.destroyed) return;
+      if (runtimeState.engineStatus === 'loading') publish({ engineStatus: 'ready' });
+      this.controller.analyzeCurrentPosition();
     }).catch((error: unknown) => {
       if (!this.destroyed) publish({ engineStatus: 'error', error: error instanceof Error ? error.message : String(error) });
     });
@@ -57,22 +66,21 @@ class GameSession {
         const moves = this.chess.detectAndApplyMoves(current, 2);
         if (!moves) {
           if (current.piecePlacementFen === START_PLACEMENT) {
+            console.log('[Chess Practice Overlay] new game detected from starting position');
+            forcedMyColor = null;
             forceRestart = true;
             scheduleRecheck();
           }
           return false;
         }
         for (const move of moves) {
-          const actor = move.color === this.myColor ? 'USER' : 'BOT';
+          const actor = this.myColor === null ? 'UNKNOWN' : move.color === this.myColor ? 'USER' : 'BOT';
           console.log(`[Chess Practice Overlay] ${actor} ${move.uci}`);
           const fen = move.afterFen;
           publish({ fen, bestMove: null, evaluation: null, mate: null, depth: null });
           const nextTurn: ChessColor = move.color === 'w' ? 'b' : 'w';
-this.controller.handleConfirmedMove(move, fen, nextTurn);
-// Принудительно перезапускаем анализ для новой позиции
-setTimeout(() => {
-  this.controller.setCurrentPosition(fen, nextTurn);
-}, 100);        }
+          this.controller.handleConfirmedMove(move, fen, nextTurn);
+        }
         return true;
       } });
     this.observer.start();
@@ -86,9 +94,15 @@ setTimeout(() => {
       }
     });
     this.orientationObserver.observe(this.board, { attributes: true, attributeFilter: ['class'] });
-    console.log('[Chess Practice Overlay] session started', `mode=${runtimeState.gameMode} myColor=${this.myColor} flipped=${this.isFlipped}`);
+    console.log('[Chess Practice Overlay] session started', {
+      mode: runtimeState.gameMode,
+      myColor: this.myColor,
+      flipped: this.isFlipped,
+      fen: this.chess.getFen()
+    });
   }
 
+  getFen(): string { return this.chess.getFen(); }
   updateSettings(): void { this.controller.updateSettings(settings.engineDepth, settings.arrowsEnabled); }
   destroy(): void {
     if (this.destroyed) return;
@@ -136,6 +150,7 @@ function reconcile(): void {
 console.log('[Chess Practice Overlay] Gate bypassed for mode:', mode.mode);
   if (!detected || pieceCount === 0) {
     const changed = logDetection(mode.mode, pieceCount, null);
+    forcedMyColor = null;
     cleanupSession();
     publish({ active: false, sessionStatus: 'waitingForBoard', myColor: null, engineStatus: 'idle', fen: null,
       bestMove: null, evaluation: null, mate: null, depth: null, error: 'Waiting for a playable board.' });
@@ -155,14 +170,45 @@ console.log('[Chess Practice Overlay] Gate bypassed for mode:', mode.mode);
 //     return;
 //   }
   if (!restart && session && session.board === detected.element && session.isFlipped === orientation.isFlipped) return;
+  if (session && session.board !== detected.element) {
+    forcedMyColor = null;
+  }
+
+  let initialFen: string | undefined;
+  if (!initialPositionStandard && session) {
+    const previousFen = session.getFen();
+    const previousPlacement = previousFen.split(' ')[0];
+    if (previousPlacement === snapshot.piecePlacementFen) {
+      initialFen = previousFen;
+      console.log('[Chess Practice Overlay] preserving midgame FEN', initialFen);
+    }
+  }
+
   cleanupSession();
-let myColor = forcedMyColor ?? orientation.myColor;
-// Фикс: если доска перевернута (черные внизу), мы играем черными
-if (orientation.isFlipped && !forcedMyColor) {
-  myColor = 'b';
-}
+
+  const playerColor =
+    detectPlayerColor();
+
+  console.log(
+    '[Chess Practice Overlay] player color',
+    {
+      myColor:
+        playerColor.myColor,
+
+      confidence:
+        playerColor.confidence,
+
+      reasons:
+        playerColor.reasons
+    }
+  );
+
+  const myColor =
+    forcedMyColor ??
+    playerColor.myColor;
+
   forcedMyColor = null;
-  session = new GameSession(detected.element, myColor, orientation.isFlipped);
+  session = new GameSession(detected.element, myColor, orientation.isFlipped, initialFen);
   session.start();
 }
 
@@ -190,8 +236,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 documentObserver = new MutationObserver(() => {
-  if (location.href !== lastUrl || !session || !session.board.isConnected) {
+  if (location.href !== lastUrl) {
+    forcedMyColor = null;
     lastUrl = location.href;
+    scheduleRecheck();
+    return;
+  }
+
+  if (!session || !session.board.isConnected) {
     scheduleRecheck();
   }
 });

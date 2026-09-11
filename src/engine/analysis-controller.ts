@@ -9,7 +9,6 @@ import type { BestMove, PieceType, Square } from '../types';
 interface Options {
   engine: StockfishClient;
   overlay: BoardOverlay;
-  myColor: ChessColor;
   depth: number;
   arrowsEnabled: boolean;
   onState: (patch: Partial<ExtensionRuntimeState>) => void;
@@ -48,18 +47,37 @@ export class AnalysisController {
     this.currentTurn = turn;
   }
 
-  handleConfirmedMove(move: DetectedMove, fen: string, turn: ChessColor): void {
-    if (this.destroyed) return;
-    this.setCurrentPosition(fen, turn);
-    if (!this.options.arrowsEnabled) return;
-    if (move.color === this.options.myColor) {
-      this.clearAndCancel('ready');
+  analyzeCurrentPosition(): void {
+    this.maybeResumeAnalysis();
+  }
+
+  handleConfirmedMove(_move: DetectedMove, fen: string, turn: ChessColor): void {
+    if (this.destroyed) {
       return;
     }
-    if (turn !== this.options.myColor) {
-      this.clearAndCancel('ready');
+
+    this.setCurrentPosition(
+      fen,
+      turn
+    );
+
+    /*
+     * Всегда убираем совет от предыдущей позиции.
+     */
+    this.clearAndCancel('ready');
+
+    if (
+      !this.options.arrowsEnabled
+    ) {
       return;
     }
+
+    /*
+     * Stockfish анализирует FEN.
+     * В FEN уже указана сторона, которая сейчас ходит.
+     *
+     * Поэтому myColor здесь вообще не нужен.
+     */
     void this.analyze(fen);
   }
 
@@ -108,9 +126,17 @@ export class AnalysisController {
   }
 
   private maybeResumeAnalysis(): void {
-    if (!this.destroyed && this.options.arrowsEnabled && this.currentFen && this.currentTurn === this.options.myColor) {
-      void this.analyze(this.currentFen);
+    if (
+      this.destroyed ||
+      !this.options.arrowsEnabled ||
+      !this.currentFen
+    ) {
+      return;
     }
+
+    void this.analyze(
+      this.currentFen
+    );
   }
 }
 

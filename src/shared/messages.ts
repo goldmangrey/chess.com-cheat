@@ -2,7 +2,12 @@ import type { BestMove, ChessColor, GameMode } from '../types';
 import type { ExtensionSettings } from './constants';
 
 export type EngineStatus = 'idle' | 'loading' | 'ready' | 'thinking' | 'error';
-export type SessionStatus = 'inactive' | 'waitingForBoard' | 'resyncUnsupported' | 'active';
+export type SessionStatus =
+  | 'inactive'
+  | 'waitingForBoard'
+  | 'waitingForPlayerColor'
+  | 'resyncUnsupported'
+  | 'active';
 
 export interface ExtensionRuntimeState {
   active: boolean;

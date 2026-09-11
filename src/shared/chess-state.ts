@@ -85,9 +85,10 @@ export class ChessState {
   private chess:
     Chess;
 
-  constructor() {
-    this.chess =
-      new Chess();
+  constructor(fen?: string) {
+    this.chess = fen
+      ? new Chess(fen)
+      : new Chess();
   }
 
   reset(): void {
